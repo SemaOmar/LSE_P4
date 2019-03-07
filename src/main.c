@@ -8,7 +8,7 @@
   ******************************************************************************
 */
 
-//furcia
+
 #include "stm32f4xx.h"
 #include "stm32f411e_discovery.h"
 #include "stm32f4xx_hal.h"
@@ -71,7 +71,9 @@ void _Error_Handler(char *file, int line)
  * UART TX task and auxiliary functions and callbacks
  * 
  ****************************/
-/*void uart_config()
+UART_HandleTypeDef UartHandle;
+
+void uart_config()
 {
   //UART Configuration
   UartHandle.Instance          = USART2;
@@ -96,7 +98,7 @@ void uart_tx(void* param)
   //Ping pong buffer
   static char buf[2][256];
   static uint8_t buf_index = 0;
-  struct msg_t msg;
+  msg_t msg;
   uint8_t len;
 
   uart_config();
@@ -104,7 +106,7 @@ void uart_tx(void* param)
   while(1) {
     // Get element from the queue and send it!
     xQueueReceive(txQueue, &msg, portMAX_DELAY);
-    if (msg->sensitivity) {
+    if (msg.sensitivity) {
       sprintf(buf[buf_index], "\n", msg.type, msg.subtype, msg.timestamp, msg.val);
     } else {
       sprintf(buf[buf_index], "\n", msg.type, msg.subtype, msg.timestamp, msg.val);
@@ -196,6 +198,7 @@ void button(void* param)
   button_msg.val = 1;
   button_msg.sensitivity = 0;
 
+
   while (1) {
     if (xSemaphoreTake(buttonSemaphore, portMAX_DELAY) != pdPASS) {
       //_Error_Handler();
@@ -203,9 +206,25 @@ void button(void* param)
     }
 
     //button_msg.timestamp = xTaskGetTickCount();
-    //button_msg.val++;
 
-    //xQueueSendToBack(txQueue, &button_msg, 0);
+    //store the count of the push of the button
+    button_msg.val++;
+    if (button_msg.val >= 5)
+    {
+      //reset of push
+      button_msg.val = 1;
+
+      //change the mode POL = 0, IT = 1 and DMA = 2
+      uart_mode++;
+
+      //return to uart_mode = POL
+      if(uart_mode >= 3)  {uart_mode = 0;}
+
+    }
+
+    //Store the button in the queue
+    xQueueSendToBack(txQueue, &button_msg, 0);
+
     vTaskDelay(200/portTICK_RATE_MS);
     HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_12);
     // Clear EXTI interrupt, just in case there was another pending interrupt.
@@ -369,54 +388,54 @@ void temperature(void* param) {
 
 void SystemClock_Config(void)
 {
-	RCC_ClkInitTypeDef RCC_ClkInitStruct;
-	RCC_OscInitTypeDef RCC_OscInitStruct;
+  RCC_ClkInitTypeDef RCC_ClkInitStruct;
+  RCC_OscInitTypeDef RCC_OscInitStruct;
 
-	__HAL_RCC_PWR_CLK_ENABLE();
-	__HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE2);
+  __HAL_RCC_PWR_CLK_ENABLE();
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE2);
 
-	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
-	RCC_OscInitStruct.HSEState = RCC_HSE_ON;
-	RCC_OscInitStruct.PLL.PLLN = 192;
-	RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV4;
-	RCC_OscInitStruct.PLL.PLLM = 4;
-	RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-	RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-	RCC_OscInitStruct.PLL.PLLQ = 8;
-	HAL_RCC_OscConfig(&RCC_OscInitStruct);
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.PLL.PLLN = 192;
+  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV4;
+  RCC_OscInitStruct.PLL.PLLM = 4;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLQ = 8;
+  HAL_RCC_OscConfig(&RCC_OscInitStruct);
 
-	RCC_ClkInitStruct.ClockType = (RCC_CLOCKTYPE_HCLK |
-								   RCC_CLOCKTYPE_PCLK1 |
-								   RCC_CLOCKTYPE_PCLK2 |
-								   RCC_CLOCKTYPE_SYSCLK);
-	RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-	RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
-	RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
-	RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+  RCC_ClkInitStruct.ClockType = (RCC_CLOCKTYPE_HCLK |
+                   RCC_CLOCKTYPE_PCLK1 |
+                   RCC_CLOCKTYPE_PCLK2 |
+                   RCC_CLOCKTYPE_SYSCLK);
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
 
-	HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2);
+  HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2);
 }
 
 void config_leds() {
-	__HAL_RCC_GPIOD_CLK_ENABLE();
-	GPIO_InitTypeDef gpio;
-	gpio.Mode = GPIO_MODE_OUTPUT_PP;
-	gpio.Pin = GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15;
-	gpio.Pull = GPIO_NOPULL;
-	gpio.Speed = GPIO_SPEED_LOW;
+  __HAL_RCC_GPIOD_CLK_ENABLE();
+  GPIO_InitTypeDef gpio;
+  gpio.Mode = GPIO_MODE_OUTPUT_PP;
+  gpio.Pin = GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15;
+  gpio.Pull = GPIO_NOPULL;
+  gpio.Speed = GPIO_SPEED_LOW;
 
-	HAL_GPIO_Init(GPIOD, &gpio);
+  HAL_GPIO_Init(GPIOD, &gpio);
 }
 
 int main(void)
 {
-	//GPIO_InitStruct.GPIO_Mode = GPIO_MODE_OUT;
+  //GPIO_InitStruct.GPIO_Mode = GPIO_MODE_OUT;
     SystemClock_Config();
     HAL_Init();
 
     config_leds();
     buttonSemaphore = xSemaphoreCreateBinary();
-	//xSemaphoreTake(buttonSemaphore, portMAX_DELAY);
+  //xSemaphoreTake(buttonSemaphore, portMAX_DELAY);
 
     //i2c_mutex = 
 
@@ -428,15 +447,15 @@ int main(void)
       _Error_Handler(__FILE__, __LINE__);
     }*/
 
-	vTaskStartScheduler();
+  vTaskStartScheduler();
 
-	return 0;
+  return 0;
 }
 
 /*void HAL_GPIO_EXTI_Callback(uint16_t pin) {
-	// Disable interrupts to prevent button bounces from giving another semaphore
-	HAL_NVIC_DisableIRQ(EXTI0_IRQn);
-	//Generate Token
+  // Disable interrupts to prevent button bounces from giving another semaphore
+  HAL_NVIC_DisableIRQ(EXTI0_IRQn);
+  //Generate Token
 
 }*/
 
