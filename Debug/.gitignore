@@ -1,0 +1,9 @@
+/BSP/
+/HAL_Driver/
+/Middlewares/
+/src/
+/startup/
+/sources.mk
+/makefile
+/objects.list
+/objects.mk

@@ -191,7 +191,7 @@ void configButton()
 
 void button(void* param)
 {
-  static int period[MAX_PERIOD] = {1000/portTICK_RATE_MS, 800/portTICK_RATE_MS, 700/portTICK_RATE_MS, 600/portTICK_RATE_MS, 500/portTICK_RATE_MS, 400/portTICK_RATE_MS, 300/portTICK_RATE_MS, 200/portTICK_RATE_MS};
+  //static int period[MAX_PERIOD] = {1000/portTICK_RATE_MS, 800/portTICK_RATE_MS, 700/portTICK_RATE_MS, 600/portTICK_RATE_MS, 500/portTICK_RATE_MS, 400/portTICK_RATE_MS, 300/portTICK_RATE_MS, 200/portTICK_RATE_MS};
 
   msg_t button_msg;
   configButton();
@@ -437,6 +437,10 @@ int main(void)
 
     config_leds();
     buttonSemaphore = xSemaphoreCreateBinary();
+    rxQueue = xQueueCreate( 10, sizeof( msg_t ) );
+    txQueue = xQueueCreate( 10, sizeof( msg_t ) );
+
+
   //xSemaphoreTake(buttonSemaphore, portMAX_DELAY);
 
     //i2c_mutex = 
