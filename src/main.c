@@ -12,9 +12,11 @@
 #include "stm32f4xx.h"
 #include "stm32f411e_discovery.h"
 #include "stm32f4xx_hal.h"
+//#include "stm32_hal_legacy.h"
 #include "stm32f411e_discovery_accelerometer.h"
 #include "string.h"
 //#include "lsm303dlhc.h"
+#include "stm32f411e_discovery_accelerometer.h"
 
 
 #include "FreeRTOS.h"
@@ -52,6 +54,39 @@ volatile int acc_period = 0;
 volatile int gyro_period = 0;
 volatile int temp_period = 0;
 volatile int button_period = 0;
+int enviar = 0;
+
+void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
+{
+
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  if(uartHandle->Instance==USART2)
+  {
+  /* USER CODE BEGIN USART2_MspInit 0 */
+
+  /* USER CODE END USART2_MspInit 0 */
+    /* USART2 clock enable */
+    __HAL_RCC_USART2_CLK_ENABLE();
+
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    /**USART2 GPIO Configuration
+    PA2     ------> USART2_TX
+    PA3     ------> USART2_RX
+    */
+    GPIO_InitStruct.Pin = GPIO_PIN_2|GPIO_PIN_3;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull = GPIO_PULLUP;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    GPIO_InitStruct.Alternate = GPIO_AF7_USART2;
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /* USER CODE BEGIN USART2_MspInit 1 */
+    HAL_NVIC_SetPriority(USART2_IRQn, 4, 0);
+    HAL_NVIC_EnableIRQ(USART2_IRQn);
+  /* USER CODE END USART2_MspInit 1 */
+  }
+}
+
 
 
 /**
@@ -76,6 +111,7 @@ UART_HandleTypeDef UartHandle;
 
 void uart_config()
 {
+  //HAL_UART_MspInit(&UartHandle);
   //UART Configuration
   UartHandle.Instance          = USART2;
 
@@ -88,10 +124,14 @@ void uart_config()
   UartHandle.Init.OverSampling = UART_OVERSAMPLING_16;
 
   //GPIO configured in MSP Callback
+
+
+
   if(HAL_UART_Init(&UartHandle) != HAL_OK)
   { 
 	    _Error_Handler(__FILE__, __LINE__);
   }
+
 }
 
 void uart_tx(void* param)
@@ -103,26 +143,33 @@ void uart_tx(void* param)
   uint8_t len;
 
   uart_config();
+  xSemaphoreGive(txSemaphoreDone);
+
+  char hola[20]= "hola mundo";
+  //HAL_UART_Transmit(&UartHandle, (uint8_t *)hola, strlen(hola), 10);
 
   while(1) {
     // Get element from the queue and send it!
     xQueueReceive(txQueue, &msg, portMAX_DELAY);
-    len = strlen(buf[buf_index]);
+
     if (msg.sensitivity) {
-      sprintf(buf, "\n", msg.type, msg.subtype, msg.timestamp, msg.val);
+      sprintf(buf[buf_index], "%c%c,%u,%d\n", msg.type, msg.subtype, msg.timestamp, msg.val);
     } else {
-      sprintf(buf[buf_index], "\n", msg.type, msg.subtype, msg.timestamp, msg.val);
+      sprintf(buf[buf_index], "%c%c,%u,%d\n", msg.type, msg.subtype, msg.timestamp, msg.val);
     }
+    len = strlen(buf[buf_index]);
 
     switch(uart_mode) {
       case M_UART_POLL:
-        if(HAL_UART_Transmit(&UartHandle, buf[buf_index], len, 500)!= HAL_OK) {
+
+    	if(HAL_UART_Transmit(&UartHandle, buf[buf_index], len, 500)!= HAL_OK) {
         //if(HAL_UART_Transmit(&UartHandle, msg.ptr, msg.len, 500)!= HAL_OK) {
             _Error_Handler(__FILE__, __LINE__);
           break;
         }
         break;
       case M_UART_IT:
+
         if (xSemaphoreTake(txSemaphoreDone, portMAX_DELAY) != pdPASS) {
             _Error_Handler(__FILE__, __LINE__);
           break;
@@ -145,7 +192,7 @@ void uart_tx(void* param)
         }
         break;
     }
-    buf_index = !buf_index;
+    //buf_index = !buf_index;
   }
 }
 
@@ -157,7 +204,10 @@ void uart_tx(void* param)
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *UartHandle)
 {
   /* Set transmission flag: transfer complete*/
+	enviar = 1;
   //Generate Token
+	xSemaphoreGiveFromISR(txSemaphoreDone, NULL);
+
 }
 
 /****************************
@@ -203,15 +253,15 @@ void button(void* param)
 
   while (1) {
     if (xSemaphoreTake(buttonSemaphore, portMAX_DELAY) != pdPASS) {
-      //_Error_Handler();
+    	_Error_Handler(__FILE__, __LINE__);
       break;
     }
 
-    //button_msg.timestamp = xTaskGetTickCount();
+    button_msg.timestamp = xTaskGetTickCount();
 
     //store the count of the push of the button
-    button_msg.val++;
-    if (button_msg.val >= 5)
+
+    if (button_msg.val > 5)
     {
       //reset of push
       button_msg.val = 1;
@@ -226,6 +276,8 @@ void button(void* param)
 
     //Store the button in the queue
     xQueueSendToBack(txQueue, &button_msg, 0);
+
+    button_msg.val++;
 
     vTaskDelay(200/portTICK_RATE_MS);
     HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_12);
@@ -437,11 +489,10 @@ int main(void)
 
     config_leds();
     buttonSemaphore = xSemaphoreCreateBinary();
+    txSemaphoreDone = xSemaphoreCreateBinary();
     rxQueue = xQueueCreate( 10, sizeof( msg_t ) );
     txQueue = xQueueCreate( 10, sizeof( msg_t ) );
 
-
-  //xSemaphoreTake(buttonSemaphore, portMAX_DELAY);
 
     //i2c_mutex = 
 
@@ -449,9 +500,16 @@ int main(void)
       _Error_Handler(__FILE__, __LINE__);
     }
 
+    if (xTaskCreate(uart_tx, "uart", 1024, NULL, 2, NULL) != pdPASS) {
+          _Error_Handler(__FILE__, __LINE__);
+        }
+
+
+
     /*if (xTaskCreate(accelerometer, "accelerometer", 1024, NULL, 5, NULL) != pdPASS) {
       _Error_Handler(__FILE__, __LINE__);
     }*/
+
 
   vTaskStartScheduler();
 
@@ -462,6 +520,4 @@ int main(void)
   // Disable interrupts to prevent button bounces from giving another semaphore
   HAL_NVIC_DisableIRQ(EXTI0_IRQn);
   //Generate Token
-
 }*/
-

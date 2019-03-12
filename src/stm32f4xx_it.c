@@ -15,7 +15,7 @@
 #include <cmsis_os.h>
 #endif
 #include "stm32f4xx_it.h"
-
+extern UART_HandleTypeDef UartHandle;
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
 /* Private macro -------------------------------------------------------------*/
@@ -43,4 +43,7 @@ void SysTick_Handler(void)
 
 void EXTI0_IRQHandler() {
 	HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_0);
+}
+void USART2_IRQHandler(){
+	HAL_UART_IRQHandler(&UartHandle);
 }
