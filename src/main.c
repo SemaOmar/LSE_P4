@@ -88,6 +88,37 @@ void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
 }
 
 
+void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
+{
+
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  if(uartHandle->Instance==USART2)
+  {
+  /* USER CODE BEGIN USART2_MspInit 0 */
+
+  /* USER CODE END USART2_MspInit 0 */
+    /* USART2 clock enable */
+    __HAL_RCC_USART2_CLK_ENABLE();
+
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    /**USART2 GPIO Configuration
+    PA2     ------> USART2_TX
+    PA3     ------> USART2_RX
+    */
+    GPIO_InitStruct.Pin = GPIO_PIN_2|GPIO_PIN_3;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull = GPIO_PULLUP;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    GPIO_InitStruct.Alternate = GPIO_AF7_USART2;
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /* USER CODE BEGIN USART2_MspInit 1 */
+
+  /* USER CODE END USART2_MspInit 1 */
+  }
+}
+
+
 
 /**
   * @brief  This function is executed in case of error occurrence.
@@ -126,7 +157,6 @@ void uart_config()
   //GPIO configured in MSP Callback
 
 
-
   if(HAL_UART_Init(&UartHandle) != HAL_OK)
   { 
 	    _Error_Handler(__FILE__, __LINE__);
@@ -147,6 +177,9 @@ void uart_tx(void* param)
 
   char hola[20]= "hola mundo";
   //HAL_UART_Transmit(&UartHandle, (uint8_t *)hola, strlen(hola), 10);
+
+  char hola[20]= "hola mundo";
+  HAL_UART_Transmit(&UartHandle, (uint8_t *)hola, strlen(hola), 10);
 
   while(1) {
     // Get element from the queue and send it!
@@ -503,8 +536,6 @@ int main(void)
     if (xTaskCreate(uart_tx, "uart", 1024, NULL, 2, NULL) != pdPASS) {
           _Error_Handler(__FILE__, __LINE__);
         }
-
-
 
     /*if (xTaskCreate(accelerometer, "accelerometer", 1024, NULL, 5, NULL) != pdPASS) {
       _Error_Handler(__FILE__, __LINE__);
