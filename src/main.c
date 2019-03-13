@@ -56,6 +56,34 @@ volatile int temp_period = 0;
 volatile int button_period = 0;
 int enviar = 0;
 
+UART_HandleTypeDef UartHandle;
+DMA_HandleTypeDef hdma_usart2_tx;
+
+void uart_dma_init()
+{
+  /* DMA controller clock enable */
+  __DMA1_CLK_ENABLE();
+
+  /* Peripheral DMA init*/
+  hdma_usart2_tx.Instance = DMA1_Stream6;
+  hdma_usart2_tx.Init.Channel = DMA_CHANNEL_4;
+  hdma_usart2_tx.Init.Direction = DMA_MEMORY_TO_PERIPH;
+  hdma_usart2_tx.Init.PeriphInc = DMA_PINC_DISABLE;
+  hdma_usart2_tx.Init.MemInc = DMA_MINC_ENABLE;
+  hdma_usart2_tx.Init.PeriphDataAlignment = DMA_MDATAALIGN_BYTE;
+  hdma_usart2_tx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+  hdma_usart2_tx.Init.Mode = DMA_NORMAL;
+  hdma_usart2_tx.Init.Priority = DMA_PRIORITY_LOW;
+  hdma_usart2_tx.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
+  HAL_DMA_Init(&hdma_usart2_tx);
+
+  __HAL_LINKDMA(&UartHandle,hdmatx,hdma_usart2_tx);
+
+  /* DMA interrupt init */
+  HAL_NVIC_SetPriority(DMA1_Stream6_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream6_IRQn);
+}
+
 void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
 {
 
@@ -81,44 +109,11 @@ void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /* USER CODE BEGIN USART2_MspInit 1 */
-    HAL_NVIC_SetPriority(USART2_IRQn, 4, 0);
+    HAL_NVIC_SetPriority(USART2_IRQn, 6, 0);
     HAL_NVIC_EnableIRQ(USART2_IRQn);
   /* USER CODE END USART2_MspInit 1 */
   }
 }
-
-
-void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
-{
-
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
-  if(uartHandle->Instance==USART2)
-  {
-  /* USER CODE BEGIN USART2_MspInit 0 */
-
-  /* USER CODE END USART2_MspInit 0 */
-    /* USART2 clock enable */
-    __HAL_RCC_USART2_CLK_ENABLE();
-
-    __HAL_RCC_GPIOA_CLK_ENABLE();
-    /**USART2 GPIO Configuration
-    PA2     ------> USART2_TX
-    PA3     ------> USART2_RX
-    */
-    GPIO_InitStruct.Pin = GPIO_PIN_2|GPIO_PIN_3;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_PULLUP;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-    GPIO_InitStruct.Alternate = GPIO_AF7_USART2;
-    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  /* USER CODE BEGIN USART2_MspInit 1 */
-
-  /* USER CODE END USART2_MspInit 1 */
-  }
-}
-
-
 
 /**
   * @brief  This function is executed in case of error occurrence.
@@ -138,12 +133,12 @@ void _Error_Handler(char *file, int line)
  * UART TX task and auxiliary functions and callbacks
  * 
  ****************************/
-UART_HandleTypeDef UartHandle;
 
 void uart_config()
 {
   //HAL_UART_MspInit(&UartHandle);
   //UART Configuration
+  uart_dma_init();
   UartHandle.Instance          = USART2;
 
   UartHandle.Init.BaudRate     = 115200;
@@ -175,20 +170,17 @@ void uart_tx(void* param)
   uart_config();
   xSemaphoreGive(txSemaphoreDone);
 
-  char hola[20]= "hola mundo";
-  //HAL_UART_Transmit(&UartHandle, (uint8_t *)hola, strlen(hola), 10);
-
-  char hola[20]= "hola mundo";
-  HAL_UART_Transmit(&UartHandle, (uint8_t *)hola, strlen(hola), 10);
+  /*char hola[20]= "hola mundo";
+  HAL_UART_Transmit(&UartHandle, (uint8_t *)hola, strlen(hola), 10);*/
 
   while(1) {
     // Get element from the queue and send it!
     xQueueReceive(txQueue, &msg, portMAX_DELAY);
 
     if (msg.sensitivity) {
-      sprintf(buf[buf_index], "%c%c,%u,%d\n", msg.type, msg.subtype, msg.timestamp, msg.val);
+      sprintf(buf[buf_index], "%c%c,%u,%d\r\n", msg.type, msg.subtype, msg.timestamp, msg.val);
     } else {
-      sprintf(buf[buf_index], "%c%c,%u,%d\n", msg.type, msg.subtype, msg.timestamp, msg.val);
+      sprintf(buf[buf_index], "%c%c,%u,%d\r\n", msg.type, msg.subtype, msg.timestamp, msg.val);
     }
     len = strlen(buf[buf_index]);
 
@@ -214,6 +206,7 @@ void uart_tx(void* param)
         }
         break;
       case M_UART_DMA:
+
         if (xSemaphoreTake(txSemaphoreDone, portMAX_DELAY) != pdPASS) {
             _Error_Handler(__FILE__, __LINE__);
           break;
@@ -241,6 +234,11 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *UartHandle)
   //Generate Token
 	xSemaphoreGiveFromISR(txSemaphoreDone, NULL);
 
+}
+
+void DMA1_Stream6_IRQHandler(void)
+{
+  HAL_DMA_IRQHandler(&hdma_usart2_tx);
 }
 
 /****************************
@@ -345,13 +343,13 @@ void accelerometer(void* param) {
   TickType_t prevWakeTime = xTaskGetTickCount();
 
   msg.type = 'A';
-  //msg.sensitivity = ; Read de datasheet
-
+  msg.sensitivity = 1;
+  accelero_config();
   while (1) {
-    xSemaphoreTake(i2cMutex, portMAX_DELAY);
+    //xSemaphoreTake(i2cMutex, portMAX_DELAY);
     msg.timestamp = xTaskGetTickCount();
     BSP_ACCELERO_GetXYZ(xyz);
-    xSemaphoreGive(i2cMutex);
+    //xSemaphoreGive(i2cMutex);
     msg.subtype = 'X';
     msg.val = xyz[0];
     xQueueSendToBack(txQueue, &msg, 0);
@@ -516,6 +514,7 @@ void config_leds() {
 
 int main(void)
 {
+
   //GPIO_InitStruct.GPIO_Mode = GPIO_MODE_OUT;
     SystemClock_Config();
     HAL_Init();
